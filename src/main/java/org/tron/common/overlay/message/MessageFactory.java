@@ -12,12 +12,11 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+
 package org.tron.common.overlay.message;
 
 public abstract class MessageFactory {
 
-  protected abstract Message create(byte type, byte[] rawData);
-
-  protected abstract Message create(byte[] data);
+  protected abstract Message create(byte[] data) throws Exception;
 
 }

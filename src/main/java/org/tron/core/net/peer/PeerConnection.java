@@ -1,7 +1,10 @@
 package org.tron.core.net.peer;
 
+import static org.tron.core.config.Parameter.NetConstants.MAX_INVENTORY_SIZE_IN_MINUTES;
+
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import java.util.Deque;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
@@ -12,39 +15,44 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.LinkedBlockingQueue;
 import javafx.util.Pair;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
+import org.tron.common.overlay.message.HelloMessage;
 import org.tron.common.overlay.message.Message;
 import org.tron.common.overlay.server.Channel;
 import org.tron.common.utils.Sha256Hash;
 import org.tron.common.utils.Time;
 import org.tron.core.capsule.BlockCapsule.BlockId;
-import org.tron.core.config.Parameter.NetConstants;
-import org.tron.core.net.message.BlockMessage;
-import org.tron.core.net.message.TransactionMessage;
+import org.tron.core.config.Parameter.NodeConstant;
+import org.tron.core.config.args.Args;
+import org.tron.core.net.node.Item;
 
 @Slf4j
 @Component
 @Scope("prototype")
 public class PeerConnection extends Channel {
 
-  @Override
-  public int hashCode() {
-    return super.hashCode();
-  }
+  private Cache<Sha256Hash, Integer> syncBlockIdCache = CacheBuilder.newBuilder()
+      .maximumSize(2 * NodeConstant.SYNC_FETCH_BATCH_NUM).build();
 
-  public long getConnectTime() {
-    return connectTime;
-  }
+  @Setter
+  @Getter
+  private BlockId lastSyncBlockId;
 
-  public void setConnectTime(long connectTime) {
-    this.connectTime = connectTime;
-  }
+  @Setter
+  @Getter
+  private long remainNum;
 
-  private long connectTime;
+  @Setter
+  @Getter
+  private long lastBlockUpdateTime = System.currentTimeMillis();
 
-  private boolean syncFlag = true;
+  private volatile boolean syncFlag = true;
+
+  private HelloMessage helloMessage;
 
   //broadcast
   private Queue<Sha256Hash> invToUs = new LinkedBlockingQueue<>();
@@ -55,23 +63,24 @@ public class PeerConnection extends Channel {
 
   private Map<Sha256Hash, Long> advObjWeSpread = new ConcurrentHashMap<>();
 
-  private Map<Sha256Hash, Long> advObjWeRequested = new ConcurrentHashMap<>();
+  private Map<Item, Long> advObjWeRequested = new ConcurrentHashMap<>();
+
+  private boolean advInhibit = false;
 
   public Map<Sha256Hash, Long> getAdvObjSpreadToUs() {
     return advObjSpreadToUs;
-  }
-
-  public void setAdvObjSpreadToUs(
-      HashMap<Sha256Hash, Long> advObjSpreadToUs) {
-    this.advObjSpreadToUs = advObjSpreadToUs;
   }
 
   public Map<Sha256Hash, Long> getAdvObjWeSpread() {
     return advObjWeSpread;
   }
 
-  public void setAdvObjWeSpread(HashMap<Sha256Hash, Long> advObjWeSpread) {
-    this.advObjWeSpread = advObjWeSpread;
+  public boolean isAdvInhibit() {
+    return advInhibit;
+  }
+
+  public void setAdvInhibit(boolean advInhibit) {
+    this.advInhibit = advInhibit;
   }
 
   //sync chain
@@ -87,6 +96,10 @@ public class PeerConnection extends Channel {
 
   public Pair<Deque<BlockId>, Long> getSyncChainRequested() {
     return syncChainRequested;
+  }
+
+  public Cache<Sha256Hash, Integer> getSyncBlockIdCache() {
+    return syncBlockIdCache;
   }
 
   public void setSyncChainRequested(
@@ -128,18 +141,25 @@ public class PeerConnection extends Channel {
 
   private Set<BlockId> blockInProc = new HashSet<>();
 
-  public Map<Sha256Hash, Long> getAdvObjWeRequested() {
+  public Map<Item, Long> getAdvObjWeRequested() {
     return advObjWeRequested;
   }
 
-  public void setAdvObjWeRequested(ConcurrentHashMap<Sha256Hash, Long> advObjWeRequested) {
+  public void setAdvObjWeRequested(ConcurrentHashMap<Item, Long> advObjWeRequested) {
     this.advObjWeRequested = advObjWeRequested;
   }
 
+  public void setHelloMessage(HelloMessage helloMessage) {
+    this.helloMessage = helloMessage;
+  }
+
+  public HelloMessage getHelloMessage() {
+    return this.helloMessage;
+  }
 
   public void cleanInvGarbage() {
     long oldestTimestamp =
-        Time.getCurrentMillis() - NetConstants.MAX_INVENTORY_SIZE_IN_MINUTES * 60 * 1000;
+        Time.getCurrentMillis() - MAX_INVENTORY_SIZE_IN_MINUTES * 60 * 1000;
 
     Iterator<Entry<Sha256Hash, Long>> iterator = this.advObjSpreadToUs.entrySet().iterator();
 
@@ -159,6 +179,12 @@ public class PeerConnection extends Channel {
         iterator.remove();
       }
     }
+  }
+
+  public boolean isAdvInvFull() {
+    return advObjSpreadToUs.size() > MAX_INVENTORY_SIZE_IN_MINUTES
+        * 60
+        * Args.getInstance().getNetMaxTrxPerSecond();
   }
 
   public boolean isBanned() {
@@ -221,18 +247,15 @@ public class PeerConnection extends Channel {
     this.invWeAdv = invWeAdv;
   }
 
-  public boolean getSyncFlag(){
+  public boolean getSyncFlag() {
     return syncFlag;
   }
 
-  public void setSyncFlag(boolean syncFlag){
+  public void setSyncFlag(boolean syncFlag) {
     this.syncFlag = syncFlag;
   }
 
   public String logSyncStats() {
-    //TODO: return tron sync status here.
-//    int waitResp = lastReqSentTime > 0 ? (int) (System.currentTimeMillis() - lastReqSentTime) / 1000 : 0;
-//    long lifeTime = System.currentTimeMillis() - connectedTime;
     return String.format(
         "Peer %s: [ %18s, ping %6s ms]-----------\n"
             + "connect time: %s\n"
@@ -246,9 +269,9 @@ public class PeerConnection extends Channel {
             + "syncChainRequested:%s\n"
             + "blockInPorc:%d\n",
         this.getNode().getHost() + ":" + this.getNode().getPort(),
-        this.getPeerIdShort(),
+        this.getNode().getHexIdShort(),
         (int) this.getPeerStats().getAvgLatency(),
-        Time.getTimeString(getConnectTime()),
+        Time.getTimeString(super.getStartTime()),
         headBlockWeBothHave.getNum(),
         isNeedSyncFromPeer(),
         isNeedSyncFromUs(),
@@ -272,16 +295,6 @@ public class PeerConnection extends Channel {
   }
 
   public void sendMessage(Message message) {
-    if (!(message instanceof BlockMessage)
-        && !(message instanceof TransactionMessage)) {
-      logger.info("Send Message:" + message.toString() + " to\n" + this);
-    }
     msgQueue.sendMessage(message);
-    nodeStatistics.tronOutMessage.add();
-  }
-
-  @Override
-  public String toString() {
-    return super.toString();// nodeStatistics.toString();
   }
 }

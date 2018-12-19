@@ -19,6 +19,7 @@ import com.google.protobuf.ByteString;
 import java.util.Collection;
 import java.util.List;
 import java.util.stream.Collectors;
+import org.tron.core.Wallet;
 
 public class StringUtil {
 
@@ -48,7 +49,7 @@ public class StringUtil {
 
   public static List<String> getAddressStringList(Collection<ByteString> collection) {
     return collection.stream()
-        .map(bytes -> createReadableString(bytes))
+        .map(bytes -> Wallet.encode58Check(bytes.toByteArray()))
         .collect(Collectors.toList());
   }
 
@@ -56,5 +57,9 @@ public class StringUtil {
     return collection.stream()
         .map(bytes -> createReadableString(bytes))
         .collect(Collectors.toList());
+  }
+
+  public static ByteString hexString2ByteString(String hexString) {
+    return ByteString.copyFrom(ByteArray.fromHexString(hexString));
   }
 }

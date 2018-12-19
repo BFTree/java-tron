@@ -17,14 +17,17 @@ package org.tron.common.storage.leveldb;
 
 import static org.fusesource.leveldbjni.JniDBFactory.factory;
 
+import com.google.common.collect.Sets;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.HashSet;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -59,9 +62,11 @@ public class LevelDbDataSourceImpl implements DbSourceInter<byte[]>,
    * constructor.
    */
   public LevelDbDataSourceImpl(String parentName, String name) {
-    parentName += Args.getInstance().getStorage().getDirectory();
-    this.parentName = parentName;
     this.dataBaseName = name;
+    this.parentName = Paths.get(
+            parentName,
+            Args.getInstance().getStorage().getDbDirectory()
+    ).toString();
   }
 
   @Override
@@ -78,7 +83,7 @@ public class LevelDbDataSourceImpl implements DbSourceInter<byte[]>,
         throw new NullPointerException("no name set to the dbStore");
       }
 
-      Options dbOptions = createDbOptions();
+      Options dbOptions = Args.getInstance().getStorage().getOptionsByDbName(dataBaseName);
 
       try {
         openDatabase(dbOptions);
@@ -108,6 +113,7 @@ public class LevelDbDataSourceImpl implements DbSourceInter<byte[]>,
     }
   }
 
+  @Deprecated
   private Options createDbOptions() {
     Options dbOptions = new Options();
     dbOptions.createIfMissing(true);
@@ -121,7 +127,7 @@ public class LevelDbDataSourceImpl implements DbSourceInter<byte[]>,
     return dbOptions;
   }
 
-  private Path getDbPath() {
+  public Path getDbPath() {
     return Paths.get(parentName, dataBaseName);
   }
 
@@ -132,6 +138,16 @@ public class LevelDbDataSourceImpl implements DbSourceInter<byte[]>,
     closeDB();
     FileUtil.recursiveDelete(getDbPath().toString());
     initDB();
+  }
+
+  public void reOpen() {
+    resetDbLock.writeLock().lock();
+    try {
+      closeDB();
+      initDB();
+    } finally {
+      resetDbLock.writeLock().unlock();
+    }
   }
 
   @Override
@@ -220,11 +236,12 @@ public class LevelDbDataSourceImpl implements DbSourceInter<byte[]>,
     }
   }
 
+  @Deprecated
   @Override
   public Set<byte[]> allKeys() {
     resetDbLock.readLock().lock();
     try (DBIterator iterator = database.iterator()) {
-      Set<byte[]> result = new HashSet<>();
+      Set<byte[]> result = Sets.newHashSet();
       for (iterator.seekToFirst(); iterator.hasNext(); iterator.next()) {
         result.add(iterator.peekNext().getKey());
       }
@@ -236,13 +253,101 @@ public class LevelDbDataSourceImpl implements DbSourceInter<byte[]>,
     }
   }
 
+  @Deprecated
   @Override
   public Set<byte[]> allValues() {
     resetDbLock.readLock().lock();
     try (DBIterator iterator = database.iterator()) {
-      Set<byte[]> result = new HashSet<>();
+      Set<byte[]> result = Sets.newHashSet();
       for (iterator.seekToFirst(); iterator.hasNext(); iterator.next()) {
         result.add(iterator.peekNext().getValue());
+      }
+      return result;
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    } finally {
+      resetDbLock.readLock().unlock();
+    }
+  }
+
+  public Set<byte[]> getlatestValues(long limit) {
+    if (limit <= 0) {
+      return Sets.newHashSet();
+    }
+    resetDbLock.readLock().lock();
+    try (DBIterator iterator = database.iterator()) {
+      Set<byte[]> result = Sets.newHashSet();
+      long i = 0;
+      iterator.seekToLast();
+      if (iterator.hasNext()) {
+        result.add(iterator.peekNext().getValue());
+        i++;
+      }
+      for (; iterator.hasPrev() && i++ < limit; iterator.prev()) {
+        result.add(iterator.peekPrev().getValue());
+      }
+      return result;
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    } finally {
+      resetDbLock.readLock().unlock();
+    }
+  }
+
+  public Set<byte[]> getValuesNext(byte[] key, long limit) {
+    if (limit <= 0) {
+      return Sets.newHashSet();
+    }
+    resetDbLock.readLock().lock();
+    try (DBIterator iterator = database.iterator()) {
+      Set<byte[]> result = Sets.newHashSet();
+      long i = 0;
+      for (iterator.seek(key); iterator.hasNext() && i++ < limit; iterator.next()) {
+        result.add(iterator.peekNext().getValue());
+      }
+      return result;
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    } finally {
+      resetDbLock.readLock().unlock();
+    }
+  }
+
+  public Map<byte[], byte[]> getNext(byte[] key, long limit) {
+    if (limit <= 0) {
+      return Collections.emptyMap();
+    }
+    resetDbLock.readLock().lock();
+    try (DBIterator iterator = database.iterator()) {
+      Map<byte[], byte[]> result = new HashMap<>();
+      long i = 0;
+      for (iterator.seek(key); iterator.hasNext() && i++ < limit; iterator.next()) {
+        Entry<byte[], byte[]> entry = iterator.peekNext();
+        result.put(entry.getKey(), entry.getValue());
+      }
+      return result;
+    } catch (IOException e) {
+      throw new RuntimeException(e);
+    } finally {
+      resetDbLock.readLock().unlock();
+    }
+  }
+
+  public Set<byte[]> getValuesPrev(byte[] key, long limit) {
+    if (limit <= 0) {
+      return Sets.newHashSet();
+    }
+    resetDbLock.readLock().lock();
+    try (DBIterator iterator = database.iterator()) {
+      Set<byte[]> result = Sets.newHashSet();
+      long i = 0;
+      byte[] data = getData(key);
+      if (Objects.nonNull(data)) {
+        result.add(data);
+        i++;
+      }
+      for (iterator.seek(key); iterator.hasPrev() && i++ < limit; iterator.prev()) {
+        result.add(iterator.peekPrev().getValue());
       }
       return result;
     } catch (IOException e) {
@@ -281,6 +386,19 @@ public class LevelDbDataSourceImpl implements DbSourceInter<byte[]>,
     }
   }
 
+  private void updateByBatchInner(Map<byte[], byte[]> rows, WriteOptions options) throws Exception {
+    try (WriteBatch batch = database.createWriteBatch()) {
+      rows.forEach((key, value) -> {
+        if (value == null) {
+          batch.delete(key);
+        } else {
+          batch.put(key, value);
+        }
+      });
+      database.write(batch, options);
+    }
+  }
+
   @Override
   public void updateByBatch(Map<byte[], byte[]> rows) {
     resetDbLock.readLock().lock();
@@ -289,6 +407,22 @@ public class LevelDbDataSourceImpl implements DbSourceInter<byte[]>,
     } catch (Exception e) {
       try {
         updateByBatchInner(rows);
+      } catch (Exception e1) {
+        throw new RuntimeException(e);
+      }
+    } finally {
+      resetDbLock.readLock().unlock();
+    }
+  }
+
+  @Override
+  public void updateByBatch(Map<byte[], byte[]> rows, WriteOptions options) {
+    resetDbLock.readLock().lock();
+    try {
+      updateByBatchInner(rows, options);
+    } catch (Exception e) {
+      try {
+        updateByBatchInner(rows, options);
       } catch (Exception e1) {
         throw new RuntimeException(e);
       }
@@ -330,4 +464,5 @@ public class LevelDbDataSourceImpl implements DbSourceInter<byte[]>,
   public Stream<Entry<byte[], byte[]>> parallelStream() {
     return StreamSupport.stream(spliterator(), true);
   }
+
 }

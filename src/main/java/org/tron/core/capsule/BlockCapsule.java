@@ -19,10 +19,10 @@ import com.google.common.primitives.Longs;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
 import java.security.SignatureException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Vector;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -32,6 +32,7 @@ import org.tron.common.utils.ByteUtil;
 import org.tron.common.utils.Sha256Hash;
 import org.tron.common.utils.Time;
 import org.tron.core.capsule.utils.MerkleTree;
+import org.tron.core.config.Parameter.ChainConstant;
 import org.tron.core.exception.BadItemException;
 import org.tron.core.exception.ValidateSignatureException;
 import org.tron.protos.Protocol.Block;
@@ -42,7 +43,6 @@ import org.tron.protos.Protocol.Transaction;
 public class BlockCapsule implements ProtoCapsule<Block> {
 
   public static class BlockId extends Sha256Hash {
-
 
     @Override
     public boolean equals(Object o) {
@@ -73,11 +73,7 @@ public class BlockCapsule implements ProtoCapsule<Block> {
     public int compareTo(Sha256Hash other) {
       if (other.getClass().equals(BlockId.class)) {
         long otherNum = ((BlockId) other).getNum();
-        if (num > otherNum) {
-          return 1;
-        } else if (otherNum < num) {
-          return -1;
-        }
+        return Long.compare(num, otherNum);
       }
       return super.compareTo(other);
     }
@@ -123,6 +119,7 @@ public class BlockCapsule implements ProtoCapsule<Block> {
 
   private Block block;
   public boolean generatedByMyself = false;
+  private List<TransactionCapsule> transactions = new ArrayList<>();
 
   public BlockCapsule(long number, Sha256Hash hash, long when, ByteString witnessAddress) {
     // blockheader raw
@@ -131,7 +128,9 @@ public class BlockCapsule implements ProtoCapsule<Block> {
         .setNumber(number)
         .setParentHash(hash.getByteString())
         .setTimestamp(when)
-        .setWitnessAddress(witnessAddress).build();
+        .setVersion(ChainConstant.BLOCK_VERSION)
+        .setWitnessAddress(witnessAddress)
+        .build();
 
     // block header
     BlockHeader.Builder blockHeaderBuild = BlockHeader.newBuilder();
@@ -140,25 +139,9 @@ public class BlockCapsule implements ProtoCapsule<Block> {
     // block
     Block.Builder blockBuild = Block.newBuilder();
     this.block = blockBuild.setBlockHeader(blockHeader).build();
+    initTxs();
   }
 
-  public BlockCapsule(long number, ByteString hash, long when, ByteString witnessAddress) {
-    // blockheader raw
-    BlockHeader.raw.Builder blockHeaderRawBuild = BlockHeader.raw.newBuilder();
-    BlockHeader.raw blockHeaderRaw = blockHeaderRawBuild
-        .setNumber(number)
-        .setParentHash(hash)
-        .setTimestamp(when)
-        .setWitnessAddress(witnessAddress).build();
-
-    // block header
-    BlockHeader.Builder blockHeaderBuild = BlockHeader.newBuilder();
-    BlockHeader blockHeader = blockHeaderBuild.setRawData(blockHeaderRaw).build();
-
-    // block
-    Block.Builder blockBuild = Block.newBuilder();
-    this.block = blockBuild.setBlockHeader(blockHeader).build();
-  }
 
   public BlockCapsule(long timestamp, ByteString parentHash, long number,
       List<Transaction> transactionList) {
@@ -178,15 +161,34 @@ public class BlockCapsule implements ProtoCapsule<Block> {
     Block.Builder blockBuild = Block.newBuilder();
     transactionList.forEach(trx -> blockBuild.addTransactions(trx));
     this.block = blockBuild.setBlockHeader(blockHeader).build();
+    initTxs();
+  }
 
+  public BlockCapsule(Block block) {
+    this.block = block;
+    initTxs();
+  }
+
+  public BlockCapsule(byte[] data) throws BadItemException {
+    try {
+      this.block = Block.parseFrom(data);
+      initTxs();
+    } catch (InvalidProtocolBufferException e) {
+      throw new BadItemException("Block proto data parse exception");
+    }
   }
 
   public void addTransaction(TransactionCapsule pendingTrx) {
     this.block = this.block.toBuilder().addTransactions(pendingTrx.getInstance()).build();
+    getTransactions().add(pendingTrx);
   }
 
   public List<TransactionCapsule> getTransactions() {
-    return this.block.getTransactionsList().stream()
+    return transactions;
+  }
+
+  private void initTxs() {
+    transactions = this.block.getTransactionsList().stream()
         .map(trx -> new TransactionCapsule(trx))
         .collect(Collectors.toList());
   }
@@ -221,7 +223,7 @@ public class BlockCapsule implements ProtoCapsule<Block> {
 
   public BlockId getBlockId() {
     if (blockId.equals(Sha256Hash.ZERO_HASH)) {
-      blockId = new BlockId(Sha256Hash.of(this.block.getBlockHeader().toByteArray()), getNum());
+      blockId = new BlockId(Sha256Hash.of(this.block.getBlockHeader().getRawData().toByteArray()), getNum());
     }
     return blockId;
   }
@@ -235,7 +237,7 @@ public class BlockCapsule implements ProtoCapsule<Block> {
 
     Vector<Sha256Hash> ids = transactionsList.stream()
         .map(TransactionCapsule::new)
-        .map(TransactionCapsule::getHash)
+        .map(TransactionCapsule::getMerkleHash)
         .collect(Collectors.toCollection(Vector::new));
 
     return MerkleTree.getInstance().createTree(ids).getRoot().getHash();
@@ -249,6 +251,15 @@ public class BlockCapsule implements ProtoCapsule<Block> {
     this.block = this.block.toBuilder().setBlockHeader(
         this.block.getBlockHeader().toBuilder().setRawData(blockHeaderRaw)).build();
   }
+  /* only for genisis */
+  public void  setWitness(String witness) {
+    BlockHeader.raw blockHeaderRaw =
+        this.block.getBlockHeader().getRawData().toBuilder().setWitnessAddress(
+            ByteString.copyFrom(witness.getBytes())).build();
+
+    this.block = this.block.toBuilder().setBlockHeader(
+        this.block.getBlockHeader().toBuilder().setRawData(blockHeaderRaw)).build();
+  }
 
   public Sha256Hash getMerkleRoot() {
     return Sha256Hash.wrap(this.block.getBlockHeader().getRawData().getTxTrieRoot());
@@ -256,19 +267,6 @@ public class BlockCapsule implements ProtoCapsule<Block> {
 
   public ByteString getWitnessAddress() {
     return this.block.getBlockHeader().getRawData().getWitnessAddress();
-  }
-
-
-  public BlockCapsule(Block block) {
-    this.block = block;
-  }
-
-  public BlockCapsule(byte[] data) throws BadItemException {
-    try {
-      this.block = Block.parseFrom(data);
-    } catch (InvalidProtocolBufferException e) {
-      throw new BadItemException();
-    }
   }
 
   @Override
@@ -317,15 +315,9 @@ public class BlockCapsule implements ProtoCapsule<Block> {
     toStringBuff.append("generated by myself=").append(generatedByMyself).append("\n");
     toStringBuff.append("generate time=").append(Time.getTimeString(getTimeStamp())).append("\n");
 
-    AtomicInteger index = new AtomicInteger();
     if (!getTransactions().isEmpty()) {
       toStringBuff.append("merkle root=").append(getMerkleRoot()).append("\n");
       toStringBuff.append("txs size=").append(getTransactions().size()).append("\n");
-      toStringBuff.append("tx: {");
-      getTransactions().forEach(tx -> toStringBuff
-          .append(index.getAndIncrement()).append(":")
-          .append(tx).append("\n"));
-      toStringBuff.append("}");
     } else {
       toStringBuff.append("txs are empty\n");
     }

@@ -8,10 +8,10 @@ import org.tron.core.capsule.TransactionCapsule;
 import org.tron.core.db.Manager;
 import org.tron.protos.Protocol;
 import org.tron.protos.Protocol.Transaction.Contract;
-import org.tron.protos.Protocol.Transaction.TransactionType;
 
 @Slf4j
 public class ActuatorFactory {
+
   public static final ActuatorFactory INSTANCE = new ActuatorFactory();
 
   private ActuatorFactory() {
@@ -31,23 +31,18 @@ public class ActuatorFactory {
       logger.info("transactionCapsule or Transaction is null");
       return actuatorList;
     }
-    //    if (null == manager) {
-    //      logger.info("manager is null");
-    //      return actuatorList;
-    //    }
+
     Preconditions.checkNotNull(manager, "manager is null");
     Protocol.Transaction.raw rawData = transactionCapsule.getInstance().getRawData();
-    if (TransactionType.ContractType.equals(rawData.getType())) {
-      rawData.getContractList()
-          .forEach(contract -> actuatorList.add(getActuatorByContract(contract, manager)));
-    }
+    rawData.getContractList()
+        .forEach(contract -> actuatorList.add(getActuatorByContract(contract, manager)));
     return actuatorList;
   }
 
   private static Actuator getActuatorByContract(Contract contract, Manager manager) {
     switch (contract.getType()) {
-      case AccountCreateContract:
-        return new CreateAccountActuator(contract.getParameter(), manager);
+      case AccountUpdateContract:
+        return new UpdateAccountActuator(contract.getParameter(), manager);
       case TransferContract:
         return new TransferActuator(contract.getParameter(), manager);
       case TransferAssetContract:
@@ -58,15 +53,60 @@ public class ActuatorFactory {
         return new VoteWitnessActuator(contract.getParameter(), manager);
       case WitnessCreateContract:
         return new WitnessCreateActuator(contract.getParameter(), manager);
+      case AccountCreateContract:
+        return new CreateAccountActuator(contract.getParameter(), manager);
       case AssetIssueContract:
         return new AssetIssueActuator(contract.getParameter(), manager);
-      case DeployContract:
-        break;
+      case UnfreezeAssetContract:
+        return new UnfreezeAssetActuator(contract.getParameter(), manager);
       case WitnessUpdateContract:
         return new WitnessUpdateActuator(contract.getParameter(), manager);
       case ParticipateAssetIssueContract:
         return new ParticipateAssetIssueActuator(contract.getParameter(), manager);
+      case FreezeBalanceContract:
+        return new FreezeBalanceActuator(contract.getParameter(), manager);
+      case UnfreezeBalanceContract:
+        return new UnfreezeBalanceActuator(contract.getParameter(), manager);
+      case WithdrawBalanceContract:
+        return new WithdrawBalanceActuator(contract.getParameter(), manager);
+      case UpdateAssetContract:
+        return new UpdateAssetActuator(contract.getParameter(), manager);
+      case ProposalCreateContract:
+        return new ProposalCreateActuator(contract.getParameter(), manager);
+      case ProposalApproveContract:
+        return new ProposalApproveActuator(contract.getParameter(), manager);
+      case ProposalDeleteContract:
+        return new ProposalDeleteActuator(contract.getParameter(), manager);
+      case SetAccountIdContract:
+        return new SetAccountIdActuator(contract.getParameter(), manager);
+//      case BuyStorageContract:
+//        return new BuyStorageActuator(contract.getParameter(), manager);
+//      case BuyStorageBytesContract:
+//        return new BuyStorageBytesActuator(contract.getParameter(), manager);
+//      case SellStorageContract:
+//        return new SellStorageActuator(contract.getParameter(), manager);
+      case UpdateSettingContract:
+        return new UpdateSettingContractActuator(contract.getParameter(), manager);
+      case UpdateEnergyLimitContract:
+        return new UpdateEnergyLimitContractActuator(contract.getParameter(), manager);
+      case ExchangeCreateContract:
+        return new ExchangeCreateActuator(contract.getParameter(), manager);
+      case ExchangeInjectContract:
+        return new ExchangeInjectActuator(contract.getParameter(), manager);
+      case ExchangeWithdrawContract:
+        return new ExchangeWithdrawActuator(contract.getParameter(), manager);
+      case ExchangeTransactionContract:
+        return new ExchangeTransactionActuator(contract.getParameter(), manager);
+      case AccountPermissionUpdateContract:
+        return new AccountPermissionUpdateActuator(contract.getParameter(), manager);
+      case PermissionAddKeyContract:
+        return new PermissionAddKeyActuator(contract.getParameter(), manager);
+      case PermissionUpdateKeyContract:
+        return new PermissionUpdateKeyActuator(contract.getParameter(), manager);
+      case PermissionDeleteKeyContract:
+        return new PermissionDeleteKeyActuator(contract.getParameter(), manager);
       default:
+        break;
 
     }
     return null;

@@ -1,10 +1,13 @@
 package org.tron.core.db.common.iterator;
 
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReadWriteLock;
+import lombok.extern.slf4j.Slf4j;
+import org.iq80.leveldb.DBIterator;
+
 import java.io.IOException;
 import java.util.Map.Entry;
 import java.util.function.Consumer;
-import lombok.extern.slf4j.Slf4j;
-import org.iq80.leveldb.DBIterator;
 
 @Slf4j
 public final class StoreIterator implements org.tron.core.db.common.iterator.DBIterator {
@@ -36,11 +39,6 @@ public final class StoreIterator implements org.tron.core.db.common.iterator.DBI
       }
     } catch (Exception e) {
       logger.debug(e.getMessage(), e);
-      try {
-        dbIterator.close();
-      } catch (IOException e1) {
-        logger.debug(e1.getMessage(), e1);
-      }
     }
 
     return hasNext;
@@ -54,10 +52,5 @@ public final class StoreIterator implements org.tron.core.db.common.iterator.DBI
   @Override
   public void remove() {
     throw new UnsupportedOperationException();
-  }
-
-  @Override
-  public void forEachRemaining(Consumer<? super Entry<byte[], byte[]>> action) {
-    dbIterator.forEachRemaining(action);
   }
 }

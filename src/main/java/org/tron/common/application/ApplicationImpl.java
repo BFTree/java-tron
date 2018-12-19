@@ -6,7 +6,6 @@ import org.springframework.stereotype.Component;
 import org.tron.core.config.args.Args;
 import org.tron.core.db.BlockStore;
 import org.tron.core.db.Manager;
-import org.tron.core.db.RevokingStore;
 import org.tron.core.net.node.Node;
 import org.tron.core.net.node.NodeDelegate;
 import org.tron.core.net.node.NodeDelegateImpl;
@@ -28,23 +27,20 @@ public class ApplicationImpl implements Application {
 
   private boolean isProducer;
 
+
   private void resetP2PNode() {
     p2pNode.listen();
-    //p2pNode.connectToP2PNetWork();
     p2pNode.syncFrom(null);
   }
 
   @Override
   public void setOptions(Args args) {
-
+    // not used
   }
 
   @Override
   @Autowired
   public void init(Args args) {
-    //p2pNode = new NodeImpl();
-    //p2pNode = ctx.getBean(NodeImpl.class);
-//    dbManager.init();
     blockStoreDb = dbManager.getBlockStore();
     services = new ServiceContainer();
     nodeDelegate = new NodeDelegateImpl(dbManager);
@@ -70,13 +66,14 @@ public class ApplicationImpl implements Application {
 
   @Override
   public void shutdown() {
-    System.err.println("******** begin to shutdown ********");
-    closeConnection();
-    synchronized (RevokingStore.getInstance()) {
+    logger.info("******** begin to shutdown ********");
+    synchronized (dbManager.getRevokingStore()) {
       closeRevokingStore();
       closeAllStore();
     }
-    System.err.println("******** end to shutdown ********");
+    closeConnection();
+    dbManager.stopRepushThread();
+    logger.info("******** end to shutdown ********");
   }
 
   @Override
@@ -113,21 +110,26 @@ public class ApplicationImpl implements Application {
   }
 
   private void closeConnection() {
-    System.err.println("******** begin to shutdown connection ********");
+    logger.info("******** begin to shutdown connection ********");
     try {
       p2pNode.close();
     } catch (Exception e) {
-      System.err.println("faild to close p2pNode. " + e);
+      logger.info("failed to close p2pNode. " + e);
     } finally {
-      System.err.println("******** end to shutdown connection ********");
+      logger.info("******** end to shutdown connection ********");
     }
   }
 
   private void closeRevokingStore() {
-    RevokingStore.getInstance().shutdown();
+    dbManager.getRevokingStore().shutdown();
   }
 
   private void closeAllStore() {
+//    if (dbManager.getRevokingStore().getClass() == SnapshotManager.class) {
+//      ((SnapshotManager) dbManager.getRevokingStore()).getDbs().forEach(IRevokingDB::close);
+//    } else {
+//      dbManager.closeAllStore();
+//    }
     dbManager.closeAllStore();
   }
 

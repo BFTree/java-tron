@@ -6,15 +6,12 @@ import org.tron.core.net.message.TronMessage;
 
 public abstract class PeerConnectionDelegate {
 
-  public abstract void onMessage(PeerConnection peer, TronMessage msg);
+  public abstract void onMessage(PeerConnection peer, TronMessage msg) throws Exception;
 
   public abstract Message getMessage(Sha256Hash msgId);
 
   public abstract void onConnectPeer(PeerConnection peer);
 
   public abstract void onDisconnectPeer(PeerConnection peer);
-
-
-  //public abstract gvoid onConnectionClosed(PeerConnection peer);
 
 }

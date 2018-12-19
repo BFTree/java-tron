@@ -15,23 +15,28 @@
 
 package org.tron.core.actuator;
 
-import com.google.common.base.Preconditions;
 import com.google.protobuf.Any;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.InvalidProtocolBufferException;
+import java.util.Arrays;
 import java.util.Map;
+import lombok.extern.slf4j.Slf4j;
+import org.tron.common.storage.Deposit;
 import org.tron.common.utils.ByteArray;
+import org.tron.common.utils.ByteUtil;
 import org.tron.core.Wallet;
 import org.tron.core.capsule.AccountCapsule;
 import org.tron.core.capsule.TransactionResultCapsule;
 import org.tron.core.db.AccountStore;
 import org.tron.core.db.Manager;
+import org.tron.core.exception.BalanceInsufficientException;
 import org.tron.core.exception.ContractExeException;
 import org.tron.core.exception.ContractValidateException;
 import org.tron.protos.Contract.TransferAssetContract;
 import org.tron.protos.Protocol.AccountType;
 import org.tron.protos.Protocol.Transaction.Result.code;
 
+@Slf4j
 public class TransferAssetActuator extends AbstractActuator {
 
   TransferAssetActuator(Any contract, Manager dbManager) {
@@ -41,104 +46,230 @@ public class TransferAssetActuator extends AbstractActuator {
   @Override
   public boolean execute(TransactionResultCapsule ret) throws ContractExeException {
     long fee = calcFee();
-    if (!this.contract.is(TransferAssetContract.class)) {
-      throw new ContractExeException();
-    }
-
-    if (this.dbManager == null) {
-      throw new ContractExeException();
-    }
-
     try {
       TransferAssetContract transferAssetContract = this.contract
           .unpack(TransferAssetContract.class);
       AccountStore accountStore = this.dbManager.getAccountStore();
-      byte[] ownerKey = transferAssetContract.getOwnerAddress().toByteArray();
-      byte[] toKey = transferAssetContract.getToAddress().toByteArray();
-      ByteString assertName = transferAssetContract.getAssetName();
+      byte[] ownerAddress = transferAssetContract.getOwnerAddress().toByteArray();
+      byte[] toAddress = transferAssetContract.getToAddress().toByteArray();
+      AccountCapsule toAccountCapsule = accountStore.get(toAddress);
+      if (toAccountCapsule == null) {
+        toAccountCapsule = new AccountCapsule(ByteString.copyFrom(toAddress), AccountType.Normal,
+            dbManager.getHeadBlockTimeStamp());
+        dbManager.getAccountStore().put(toAddress, toAccountCapsule);
+
+        fee = fee + dbManager.getDynamicPropertiesStore().getCreateNewAccountFeeInSystemContract();
+      }
+      ByteString assetName = transferAssetContract.getAssetName();
       long amount = transferAssetContract.getAmount();
 
-      AccountCapsule ownerAccountCapsule = accountStore.get(ownerKey);
-      if (!ownerAccountCapsule.reduceAssetAmount(assertName, amount)) {
+      dbManager.adjustBalance(ownerAddress, -fee);
+      dbManager.adjustBalance(dbManager.getAccountStore().getBlackhole().createDbKey(), fee);
+
+      AccountCapsule ownerAccountCapsule = accountStore.get(ownerAddress);
+      if (!ownerAccountCapsule.reduceAssetAmountV2(assetName.toByteArray(), amount, dbManager)) {
         throw new ContractExeException("reduceAssetAmount failed !");
       }
-      accountStore.put(ownerKey, ownerAccountCapsule);
+      accountStore.put(ownerAddress, ownerAccountCapsule);
 
-      AccountCapsule toAccountCapsule = accountStore.get(toKey);
-      toAccountCapsule.addAssetAmount(assertName, amount);
-      accountStore.put(toKey, toAccountCapsule);
+      toAccountCapsule.addAssetAmountV2(assetName.toByteArray(), amount, dbManager);
+      accountStore.put(toAddress, toAccountCapsule);
 
       ret.setStatus(fee, code.SUCESS);
+    } catch (BalanceInsufficientException e) {
+      logger.debug(e.getMessage(), e);
+      ret.setStatus(fee, code.FAILED);
+      throw new ContractExeException(e.getMessage());
     } catch (InvalidProtocolBufferException e) {
       ret.setStatus(fee, code.FAILED);
-      throw new ContractExeException();
+      throw new ContractExeException(e.getMessage());
+    } catch (ArithmeticException e) {
+      ret.setStatus(fee, code.FAILED);
+      throw new ContractExeException(e.getMessage());
     }
+
     return true;
   }
 
   @Override
   public boolean validate() throws ContractValidateException {
+    if (this.contract == null) {
+      throw new ContractValidateException("No contract!");
+    }
+    if (this.dbManager == null) {
+      throw new ContractValidateException("No dbManager!");
+    }
+    if (!this.contract.is(TransferAssetContract.class)) {
+      throw new ContractValidateException(
+          "contract type error,expected type [TransferAssetContract],real type[" + contract
+              .getClass() + "]");
+    }
+    final TransferAssetContract transferAssetContract;
     try {
-      TransferAssetContract transferAssetContract = this.contract
-          .unpack(TransferAssetContract.class);
-
-      if (!Wallet.addressValid(transferAssetContract.getOwnerAddress().toByteArray())) {
-        throw new ContractValidateException("Invalidate ownerAddress");
-      }
-      if (!Wallet.addressValid(transferAssetContract.getToAddress().toByteArray())) {
-        throw new ContractValidateException("Invalidate toAddress");
-      }
-      Preconditions.checkNotNull(transferAssetContract.getAssetName(), "AssetName is null");
-      Preconditions.checkNotNull(transferAssetContract.getAmount(), "Amount is null");
-
-      if (transferAssetContract.getOwnerAddress().equals(transferAssetContract.getToAddress())) {
-        throw new ContractValidateException("Cannot transfer asset to yourself.");
-      }
-
-      byte[] ownerKey = transferAssetContract.getOwnerAddress().toByteArray();
-      if (!this.dbManager.getAccountStore().has(ownerKey)) {
-        throw new ContractValidateException();
-      }
-
-      // if account with to_address is not existed,  create it.
-      ByteString toAddress = transferAssetContract.getToAddress();
-      if (!dbManager.getAccountStore().has(toAddress.toByteArray())) {
-        AccountCapsule account = new AccountCapsule(toAddress, AccountType.Normal);
-        dbManager.getAccountStore().put(toAddress.toByteArray(), account);
-      }
-
-      byte[] nameKey = transferAssetContract.getAssetName().toByteArray();
-      if (!this.dbManager.getAssetIssueStore().has(nameKey)) {
-        throw new ContractValidateException();
-      }
-
-      long amount = transferAssetContract.getAmount();
-
-      AccountCapsule ownerAccount = this.dbManager.getAccountStore().get(ownerKey);
-      if (ownerAccount == null) {
-        throw new ContractValidateException();
-      }
-      Map<String, Long> asset = ownerAccount.getAssetMap();
-
-      if (asset.isEmpty()) {
-        throw new ContractValidateException();
-      }
-
-      Long assetBalance = asset.get(ByteArray.toStr(nameKey));
-
-      if (amount <= 0 || null == assetBalance || amount > assetBalance || assetBalance <= 0) {
-        throw new ContractValidateException();
-      }
+      transferAssetContract = this.contract.unpack(TransferAssetContract.class);
     } catch (InvalidProtocolBufferException e) {
-      throw new ContractValidateException();
+      logger.debug(e.getMessage(), e);
+      throw new ContractValidateException(e.getMessage());
+    }
+
+    long fee = calcFee();
+    byte[] ownerAddress = transferAssetContract.getOwnerAddress().toByteArray();
+    byte[] toAddress = transferAssetContract.getToAddress().toByteArray();
+    byte[] assetName = transferAssetContract.getAssetName().toByteArray();
+    long amount = transferAssetContract.getAmount();
+
+    if (!Wallet.addressValid(ownerAddress)) {
+      throw new ContractValidateException("Invalid ownerAddress");
+    }
+    if (!Wallet.addressValid(toAddress)) {
+      throw new ContractValidateException("Invalid toAddress");
+    }
+//    if (!TransactionUtil.validAssetName(assetName)) {
+//      throw new ContractValidateException("Invalid assetName");
+//    }
+    if (amount <= 0) {
+      throw new ContractValidateException("Amount must greater than 0.");
+    }
+
+    if (Arrays.equals(ownerAddress, toAddress)) {
+      throw new ContractValidateException("Cannot transfer asset to yourself.");
+    }
+
+    AccountCapsule ownerAccount = this.dbManager.getAccountStore().get(ownerAddress);
+    if (ownerAccount == null) {
+      throw new ContractValidateException("No owner account!");
+    }
+
+    if (!this.dbManager.getAssetIssueStoreFinal().has(assetName)) {
+      throw new ContractValidateException("No asset !");
+    }
+
+    Map<String, Long> asset;
+    if (dbManager.getDynamicPropertiesStore().getAllowSameTokenName() == 0) {
+      asset = ownerAccount.getAssetMap();
+    } else {
+      asset = ownerAccount.getAssetMapV2();
+    }
+    if (asset.isEmpty()) {
+      throw new ContractValidateException("Owner no asset!");
+    }
+
+    Long assetBalance = asset.get(ByteArray.toStr(assetName));
+    if (null == assetBalance || assetBalance <= 0) {
+      throw new ContractValidateException("assetBalance must greater than 0.");
+    }
+    if (amount > assetBalance) {
+      throw new ContractValidateException("assetBalance is not sufficient.");
+    }
+
+    AccountCapsule toAccount = this.dbManager.getAccountStore().get(toAddress);
+    if (toAccount != null) {
+      if (dbManager.getDynamicPropertiesStore().getAllowSameTokenName() == 0) {
+        assetBalance = toAccount.getAssetMap().get(ByteArray.toStr(assetName));
+      } else {
+        assetBalance = toAccount.getAssetMapV2().get(ByteArray.toStr(assetName));
+      }
+      if (assetBalance != null) {
+        try {
+          assetBalance = Math.addExact(assetBalance, amount); //check if overflow
+        } catch (Exception e) {
+          logger.debug(e.getMessage(), e);
+          throw new ContractValidateException(e.getMessage());
+        }
+      }
+    } else {
+      fee = fee + dbManager.getDynamicPropertiesStore().getCreateNewAccountFeeInSystemContract();
+      if (ownerAccount.getBalance() < fee) {
+        throw new ContractValidateException(
+            "Validate TransferAssetActuator error, insufficient fee.");
+      }
+    }
+
+    return true;
+  }
+
+  public static boolean validateForSmartContract(Deposit deposit, byte[] ownerAddress,
+      byte[] toAddress, byte[] tokenId, long amount) throws ContractValidateException {
+    if (deposit == null) {
+      throw new ContractValidateException("No deposit!");
+    }
+
+    long fee = 0;
+    byte[] tokenIdWithoutLeadingZero = ByteUtil.stripLeadingZeroes(tokenId);
+
+    if (!Wallet.addressValid(ownerAddress)) {
+      throw new ContractValidateException("Invalid ownerAddress");
+    }
+    if (!Wallet.addressValid(toAddress)) {
+      throw new ContractValidateException("Invalid toAddress");
+    }
+//    if (!TransactionUtil.validAssetName(assetName)) {
+//      throw new ContractValidateException("Invalid assetName");
+//    }
+    if (amount <= 0) {
+      throw new ContractValidateException("Amount must greater than 0.");
+    }
+
+    if (Arrays.equals(ownerAddress, toAddress)) {
+      throw new ContractValidateException("Cannot transfer asset to yourself.");
+    }
+
+    AccountCapsule ownerAccount = deposit.getAccount(ownerAddress);
+    if (ownerAccount == null) {
+      throw new ContractValidateException("No owner account!");
+    }
+
+    if (deposit.getAssetIssue(tokenIdWithoutLeadingZero) == null) {
+      throw new ContractValidateException("No asset !");
+    }
+    if (!deposit.getDbManager().getAssetIssueStoreFinal().has(tokenIdWithoutLeadingZero)) {
+      throw new ContractValidateException("No asset !");
+    }
+
+    Map<String, Long> asset;
+    if (deposit.getDbManager().getDynamicPropertiesStore().getAllowSameTokenName() == 0) {
+      asset = ownerAccount.getAssetMap();
+    } else {
+      asset = ownerAccount.getAssetMapV2();
+    }
+    if (asset.isEmpty()) {
+      throw new ContractValidateException("Owner no asset!");
+    }
+
+    Long assetBalance = asset.get(ByteArray.toStr(tokenIdWithoutLeadingZero));
+    if (null == assetBalance || assetBalance <= 0) {
+      throw new ContractValidateException("assetBalance must greater than 0.");
+    }
+    if (amount > assetBalance) {
+      throw new ContractValidateException("assetBalance is not sufficient.");
+    }
+
+    AccountCapsule toAccount = deposit.getAccount(toAddress);
+    if (toAccount != null) {
+      if (deposit.getDbManager().getDynamicPropertiesStore().getAllowSameTokenName() == 0) {
+        assetBalance = toAccount.getAssetMap().get(ByteArray.toStr(tokenIdWithoutLeadingZero));
+      } else {
+        assetBalance = toAccount.getAssetMapV2().get(ByteArray.toStr(tokenIdWithoutLeadingZero));
+      }
+      if (assetBalance != null) {
+        try {
+          assetBalance = Math.addExact(assetBalance, amount); //check if overflow
+        } catch (Exception e) {
+          logger.debug(e.getMessage(), e);
+          throw new ContractValidateException(e.getMessage());
+        }
+      }
+    } else {
+      throw new ContractValidateException(
+          "Validate InternalTransfer error, no ToAccount. And not allowed to create account in smart contract.");
     }
 
     return true;
   }
 
   @Override
-  public ByteString getOwnerAddress() {
-    return null;
+  public ByteString getOwnerAddress() throws InvalidProtocolBufferException {
+    return contract.unpack(TransferAssetContract.class).getOwnerAddress();
   }
 
   @Override

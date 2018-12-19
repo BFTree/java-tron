@@ -2,65 +2,53 @@ package org.tron.core.db;
 
 import java.util.ArrayList;
 import java.util.List;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.tron.core.capsule.TransactionCapsule;
-import org.tron.core.exception.ContractExeException;
-import org.tron.core.exception.ContractValidateException;
-import org.tron.core.exception.DupTransactionException;
-import org.tron.core.exception.HighFreqException;
-import org.tron.core.exception.ValidateSignatureException;
+import org.tron.core.db.TransactionTrace.TimeResultType;
 
 @Slf4j
 public class PendingManager implements AutoCloseable {
 
-  List<TransactionCapsule> tmpTransactions = new ArrayList<>();
+  @Getter
+  static List<TransactionCapsule> tmpTransactions = new ArrayList<>();
   Manager dbManager;
 
   public PendingManager(Manager db) {
+
     this.dbManager = db;
     tmpTransactions.addAll(db.getPendingTransactions());
     db.getPendingTransactions().clear();
-    db.getDialog().reset();
+    db.getSession().reset();
   }
 
   @Override
   public void close() {
-    this.tmpTransactions.stream()
-        .filter(
-            trx -> dbManager.getTransactionStore().get(trx.getTransactionId().getBytes()) == null)
-        .forEach(trx -> {
-          try {
-            dbManager.pushTransactions(trx);
-          } catch (ValidateSignatureException e) {
-            logger.debug(e.getMessage(), e);
-          } catch (ContractValidateException e) {
-            logger.debug(e.getMessage(), e);
-          } catch (ContractExeException e) {
-            logger.debug(e.getMessage(), e);
-          } catch (HighFreqException e) {
-            logger.debug(e.getMessage(), e);
-          } catch (DupTransactionException e) {
-            logger.debug("pending manager: dup trans", e);
-          }
-        });
-    dbManager.getPoppedTransactions().stream()
-        .filter(
-            trx -> dbManager.getTransactionStore().get(trx.getTransactionId().getBytes()) == null)
-        .forEach(trx -> {
-          try {
-            dbManager.pushTransactions(trx);
-          } catch (ValidateSignatureException e) {
-            logger.debug(e.getMessage(), e);
-          } catch (ContractValidateException e) {
-            logger.debug(e.getMessage(), e);
-          } catch (ContractExeException e) {
-            logger.debug(e.getMessage(), e);
-          } catch (HighFreqException e) {
-            logger.debug(e.getMessage(), e);
-          } catch (DupTransactionException e) {
-            logger.debug("pending manager: dup trans", e);
-          }
-        });
+
+    for (TransactionCapsule tx : PendingManager.tmpTransactions) {
+      try {
+        if (tx.getTrxTrace() != null &&
+            tx.getTrxTrace().getTimeResultType().equals(TimeResultType.NORMAL)) {
+          dbManager.getRepushTransactions().put(tx);
+        }
+      } catch (InterruptedException e) {
+        logger.error(e.getMessage());
+        Thread.currentThread().interrupt();
+      }
+    }
+    tmpTransactions.clear();
+
+    for (TransactionCapsule tx : dbManager.getPoppedTransactions()) {
+      try {
+        if (tx.getTrxTrace() != null &&
+            tx.getTrxTrace().getTimeResultType().equals(TimeResultType.NORMAL)) {
+          dbManager.getRepushTransactions().put(tx);
+        }
+      } catch (InterruptedException e) {
+        logger.error(e.getMessage());
+        Thread.currentThread().interrupt();
+      }
+    }
     dbManager.getPoppedTransactions().clear();
   }
 }

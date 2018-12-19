@@ -15,77 +15,55 @@
 
 package org.tron.core.db;
 
-import com.googlecode.cqengine.IndexedCollection;
-import java.util.Iterator;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.lang3.ArrayUtils;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.tron.common.utils.Sha256Hash;
 import org.tron.core.capsule.BlockCapsule;
-import org.tron.core.db.common.iterator.BlockIterator;
+import org.tron.core.capsule.BlockCapsule.BlockId;
 import org.tron.core.exception.BadItemException;
-import org.tron.core.exception.ItemNotFoundException;
-import org.tron.protos.Protocol.Block;
 
 @Slf4j
 @Component
 public class BlockStore extends TronStoreWithRevoking<BlockCapsule> {
 
-  private BlockCapsule head;
-  private IndexedCollection<Block> blockIndex;
-
   @Autowired
-  private BlockStore(@Qualifier("block") String dbName) {
+  private BlockStore(@Value("block") String dbName) {
     super(dbName);
   }
 
-  private static BlockStore instance;
-
-  public static void destroy() {
-    instance = null;
+  public List<BlockCapsule> getLimitNumber(long startNumber, long limit) {
+    BlockId startBlockId = new BlockId(Sha256Hash.ZERO_HASH, startNumber);
+    return revokingDB.getValuesNext(startBlockId.getBytes(), limit).stream()
+        .map(bytes -> {
+          try {
+            return new BlockCapsule(bytes);
+          } catch (BadItemException ignored) {
+          }
+          return null;
+        })
+        .filter(Objects::nonNull)
+        .sorted(Comparator.comparing(BlockCapsule::getNum))
+        .collect(Collectors.toList());
   }
 
-  @Override
-  public void put(byte[] key, BlockCapsule item) {
-    if (indexHelper != null) {
-      indexHelper.update(item.getInstance());
-    }
-    super.put(key, item);
-  }
+  public List<BlockCapsule> getBlockByLatestNum(long getNum) {
 
-  /**
-   * create fun.
-   */
-  public static BlockStore create(String dbName) {
-    if (instance == null) {
-      synchronized (BlockStore.class) {
-        if (instance == null) {
-          instance = new BlockStore(dbName);
-        }
-      }
-    }
-    return instance;
-  }
-
-  @Override
-  public BlockCapsule get(byte[] key) throws ItemNotFoundException, BadItemException {
-    byte[] value = dbSource.getData(key);
-    if (ArrayUtils.isEmpty(value)) {
-      throw new ItemNotFoundException();
-    }
-    return new BlockCapsule(value);
-  }
-
-  @Override
-  public boolean has(byte[] key) {
-    byte[] block = dbSource.getData(key);
-    logger.info("address is {}, block is {}", key, block);
-    return null != block;
-  }
-
-  @Override
-  public Iterator<BlockCapsule> iterator() {
-    return new BlockIterator(dbSource.iterator());
+    return revokingDB.getlatestValues(getNum).stream()
+        .map(bytes -> {
+          try {
+            return new BlockCapsule(bytes);
+          } catch (BadItemException ignored) {
+          }
+          return null;
+        })
+        .filter(Objects::nonNull)
+        .sorted(Comparator.comparing(BlockCapsule::getNum))
+        .collect(Collectors.toList());
   }
 }

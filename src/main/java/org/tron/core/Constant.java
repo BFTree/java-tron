@@ -32,13 +32,30 @@ public class Constant {
 
   //config for junit test
   public static final String TEST_CONF = "config-test.conf";
-  
+
   public static final String DATABASE_DIR = "storage.directory";
 
-  public static final byte ADD_PRE_FIX_BYTE_MAINNET = (byte) 0xb0;   //b0 + address  ,b0 is version
-  public static final String ADD_PRE_FIX_STRING_MAINNET = "b0";
-  public static final byte ADD_PRE_FIX_BYTE_TESTNET = (byte) 0xa0;   //a0 + address  ,a0 is version
+  public static final byte ADD_PRE_FIX_BYTE_MAINNET = (byte) 0x41;   //41 + address
+  public static final String ADD_PRE_FIX_STRING_MAINNET = "41";
+  public static final byte ADD_PRE_FIX_BYTE_TESTNET = (byte) 0xa0;   //a0 + address
   public static final String ADD_PRE_FIX_STRING_TESTNET = "a0";
   public static final int ADDRESS_SIZE = 42;
-  public static final int BASE58CHECK_ADDRESS_SIZE = 35;
+
+  // config for transaction
+  public static final long TRANSACTION_MAX_BYTE_SIZE = 500 * 1_024L;
+  public static final long MAXIMUM_TIME_UNTIL_EXPIRATION = 24 * 60 * 60 * 1_000L; //one day
+  public static final long TRANSACTION_DEFAULT_EXPIRATION_TIME = 60 * 1_000L; //60 seconds
+
+  // config for smart contract
+  public static final long SUN_PER_ENERGY = 100; // 1 us = 100 DROP = 100 * 10^-6 TRX
+  public static final long ENERGY_LIMIT_IN_CONSTANT_TX = 3_000_000L; // ref: 1 us = 1 energy
+  public static final long MAX_RESULT_SIZE_IN_TX = 64; // max 8 * 8 items in result
+  public static final long PB_DEFAULT_ENERGY_LIMIT = 0L;
+  public static final long CREATOR_DEFAULT_ENERGY_LIMIT = 1000 * 10_000L;
+
+
+  // Numbers
+  public static final int ONE_HUNDRED = 100;
+  public static final int ONE_THOUSAND = 1000;
+
 }

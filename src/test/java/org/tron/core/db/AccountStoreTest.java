@@ -1,12 +1,14 @@
 package org.tron.core.db;
 
 import com.google.protobuf.ByteString;
+
 import java.io.File;
+
 import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.BeforeClass;
 import org.junit.Test;
-import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+import org.tron.common.application.TronApplicationContext;
 import org.tron.common.utils.ByteArray;
 import org.tron.common.utils.FileUtil;
 import org.tron.core.Constant;
@@ -18,23 +20,31 @@ import org.tron.protos.Protocol.AccountType;
 public class AccountStoreTest {
 
   private static String dbPath = "output_AccountStore_test";
-  private static AnnotationConfigApplicationContext context;
+  private static String dbDirectory = "db_AccountStore_test";
+  private static String indexDirectory = "index_AccountStore_test";
+  private static TronApplicationContext context;
   private static AccountStore accountStore;
   private static final byte[] data = TransactionStoreTest.randomBytes(32);
   private static byte[] address = TransactionStoreTest.randomBytes(32);
   private static byte[] accountName = TransactionStoreTest.randomBytes(32);
 
   static {
-    Args.setParam(new String[]{"--output-directory", dbPath},
-        Constant.TEST_CONF);
-    context = new AnnotationConfigApplicationContext(DefaultConfig.class);
+    Args.setParam(
+        new String[]{
+            "--output-directory", dbPath,
+            "--storage-db-directory", dbDirectory,
+            "--storage-index-directory", indexDirectory
+        },
+        Constant.TEST_CONF
+    );
+    context = new TronApplicationContext(DefaultConfig.class);
   }
 
   @AfterClass
   public static void destroy() {
     Args.clearParam();
-    FileUtil.deleteDir(new File(dbPath));
     context.destroy();
+    FileUtil.deleteDir(new File(dbPath));
   }
 
   @BeforeClass

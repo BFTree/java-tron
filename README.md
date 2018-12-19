@@ -1,6 +1,6 @@
 <h1 align="center">
   <br>
-  <img width=20% src="https://raw.githubusercontent.com/tronprotocol/wiki/master/images/java-tron.png">
+  <img width=20% src="https://github.com/tronprotocol/wiki/blob/master/images/java-tron.jpg?raw=true">
   <br>
   java-tron
   <br>
@@ -12,12 +12,16 @@
 
 
 <p align="center">
-  <a href="https://join.slack.com/t/tronfoundation/shared_invite/enQtMzAzNzg4NTI4NDM3LTAyZGQzMzEzMjNkNDU0ZjNkNTA4OTYyNTA5YWZmYjE3MTEyOWZhNzljNzQwODM3NDQ0OWRiMTIyMDhlYzgyOGQ">
-    <img src="https://img.shields.io/badge/chat-on%20slack-brightgreen.svg">
+  <a href="https://discord.gg/GsRgsTD">
+    <img src="https://img.shields.io/badge/chat-on%20discord-brightgreen.svg">
   </a>
     
   <a href="https://travis-ci.org/tronprotocol/java-tron">
     <img src="https://travis-ci.org/tronprotocol/java-tron.svg?branch=develop">
+  </a>
+  
+  <a href="https://codecov.io/gh/tronprotocol/java-tron">
+    <img src="https://codecov.io/gh/tronprotocol/java-tron/branch/develop/graph/badge.svg" />
   </a>
   
   <a href="https://github.com/tronprotocol/java-tron/issues">
@@ -41,7 +45,7 @@
   <a href="#how-to-build">How to Build</a> •
   <a href="#running">How to Run</a> •
   <a href="#links">Links</a> •
-  <a href="http://wiki.tron.network">Wiki</a> •
+  <a href="http://developers.tron.network">Documentation</a> •
   <a href="CONTRIBUTING.md">Contributing</a> •
   <a href="#community">Community</a>
 </p>
@@ -52,9 +56,9 @@ TRON is a project dedicated to building the infrastructure for a truly decentral
 
 The Tron Protocol, one of the largest blockchain based operating systems in the world, offers scalable, high-availability and high-throughput support that underlies all the decentralized applications in the TRON ecosystem. 
 
-TRON enables large-scale development and engagement. With over 2000 TPS, high concurrency, low latency and massive data transmission, TRON is ideal for building decentralized entertainment applications. Free features and incentive systems allow developers to create premium app experiences for users.
+TRON enables large-scale development and engagement. With over 2000 transactions per second (TPS), high concurrency, low latency and massive data transmission, TRON is ideal for building decentralized entertainment applications. Free features and incentive systems allow developers to create premium app experiences for users.
 
-TRON Protocol and the TVM allow anyone to develop DAPPs for themselves or their communities, with smart contracts making decentralized crowdfunding and token issuance easier than ever.
+TRON Protocol and the Tron Virtual Machine (TVM) allow anyone to develop decentralized applications (DAPPs) for themselves or their communities with smart contracts thereby making decentralized crowdfunding and token issuance easier than ever.
 
 # How to Build
 
@@ -62,20 +66,63 @@ TRON Protocol and the TVM allow anyone to develop DAPPs for themselves or their 
 
 * JDK 1.8 (JDK 1.9+ are not supported yet)
 * On Linux Ubuntu system (e.g. Ubuntu 16.04.4 LTS), ensure that the machine has [__Oracle JDK 8__](https://www.digitalocean.com/community/tutorials/how-to-install-java-with-apt-get-on-ubuntu-16-04), instead of having __Open JDK 8__ in the system. If you are building the source code by using __Open JDK 8__, you will get [__Build Failed__](https://github.com/tronprotocol/java-tron/issues/337) result.
+* Open **UDP** ports for connection to the network
+* **MINIMUM** 2 ENERGY Cores
 
-## Getting the code
+## Build and Deploy automatically using scripts
+
+- Please take a look at the [Tron Deployment Scripts](https://github.com/tronprotocol/TronDeployment) repository.
+
+## Getting the code with git
 
 * Use Git from the Terminal, see the [Setting up Git](https://help.github.com/articles/set-up-git/) and [Fork a Repo](https://help.github.com/articles/fork-a-repo/) articles.
-** develop branch: the newnest code 
-** master branch: more stable than develop.
+* develop branch: the newest code 
+* master branch: more stable than develop.
 In the shell command, type:
 ```bash
 git clone https://github.com/tronprotocol/java-tron.git
+git checkout -t origin/master
 ```
 
 * For Mac, you can also install **[GitHub for Mac](https://mac.github.com/)** then **[fork and clone our repository](https://guides.github.com/activities/forking/)**. 
 
 * If you'd rather not use Git, [Download the ZIP](https://github.com/tronprotocol/java-tron/archive/develop.zip)
+
+## Including java-tron as dependency
+
+* If you don't want to checkout the code and build the project, you can include it directly as a dependency
+
+**Using gradle:**
+
+```
+repositories {
+   maven { url 'https://jitpack.io' }
+}
+dependencies {
+   implementation 'com.github.tronprotocol:java-tron:develop-SNAPSHOT'
+}
+```
+  
+**Using maven:**
+
+```xml
+...
+<repositories>
+  <repository>
+      <id>jitpack.io</id>
+      <url>https://jitpack.io</url>
+  </repository>
+</repositories>
+...
+<dependency>
+    <groupId>com.github.tronprotocol</groupId>
+    <artifactId>java-tron</artifactId>
+    <version>develop-SNAPSHOT</version><!--You can use any of the tag/branch name available-->
+</dependency>
+```
+
+
+
 
 ## Building from source code
 
@@ -86,74 +133,95 @@ cd java-tron
 ./gradlew build
 ```
 
-* Build an executable JAR
-
-```bash
-./gradlew clean shadowJar
-```
 
 * Build in [IntelliJ IDEA](https://www.jetbrains.com/idea/) (community version is enough):
+
+  **Please run ./gradlew build once to build the protocol files**
 
   1. Start IntelliJ. Select `File` -> `Open`, then locate to the java-tron folder which you have git cloned to your local drive. Then click `Open` button on the right bottom.
   2. Check on `Use auto-import` on the `Import Project from Gradle` dialog. Select JDK 1.8 in the `Gradle JVM` option. Then click `OK`.
   3. IntelliJ will open the project and start gradle syncing, which will take several minutes, depending on your network connection and your IntelliJ configuration
-  4. After the syncing finished, select `Gradle` -> `Tasks` -> `build`, and then double click `build` option.
-    
+  4. Enable Annotations, `Preferences` -> Search `annotations` -> check `Enable Annotation Processing`.
+  5. After the syncing finished, select `Gradle` -> `Tasks` -> `build`, and then double click `build` option.
+  
 # Running
 
-## Running a Private Testnet
+### Running multi-nodes
 
-### How to run a full node
+https://github.com/tronprotocol/Documentation/blob/master/TRX/Solidity_and_Full_Node_Deployment_EN.md
 
-* You should modify the config.conf
-  1. genesis.block.witnesses replace to yourself address
-  2. seed.node ip.list replace to yourself ip list
+## Running a local node and connecting to the public testnet 
 
-* In the Terminal
+* Use the [Testnet Config](https://github.com/tronprotocol/TronDeployment/blob/master/test_net_config.conf) or use the [Tron Deployment Scripts](https://github.com/tronprotocol/TronDeployment) 
 
-```bash
-./gradlew run
-```
 
-* Use the executable JAR
+### Running a Super Representative Node for mainnet
+
+* Use the executable JAR(Recommended way)
 
 ```bash
-cd build/libs 
-java -jar java-tron.jar 
+java -jar FullNode.jar -p your private key --witness -c your config.conf(Example：/data/java-tron/config.conf)
+Example:
+java -jar FullNode.jar -p 650950B193DDDDB35B6E48912DD28F7AB0E7140C1BFDEFD493348F02295BD812 --witness -c /data/java-tron/config.conf
+
 ```
 
-* In IntelliJ IDEA
-  1. After the building finishes, locate `FullNode` in the project structure view panel, which is on the path `java-tron/src/main/java/org.tron/program/FullNode`.
-  2. Select `FullNode`, right click on it, and select `Run 'FullNode.main()'`, then `FullNode` starts running.
+This is similar to running a private testnet, except that the IPs in the `config.conf` are officially declared by TRON.
 
-### How to run a Super Node
+<details>
+<summary>Correct output</summary>
 
+```bash
+
+20:43:18.138 INFO  [main] [o.t.p.FullNode](FullNode.java:21) Full node running.
+20:43:18.486 INFO  [main] [o.t.c.c.a.Args](Args.java:429) Bind address wasn't set, Punching to identify it...
+20:43:18.493 INFO  [main] [o.t.c.c.a.Args](Args.java:433) UDP local bound to: 10.0.8.146
+20:43:18.495 INFO  [main] [o.t.c.c.a.Args](Args.java:448) External IP wasn't set, using checkip.amazonaws.com to identify it...
+20:43:19.450 INFO  [main] [o.t.c.c.a.Args](Args.java:461) External address identified: 47.74.147.87
+20:43:19.599 INFO  [main] [o.s.c.a.AnnotationConfigApplicationContext](AbstractApplicationContext.java:573) Refreshing org.springframework.context.annotation.AnnotationConfigApplicationContext@124c278f: startup date [Fri Apr 27 20:43:19 CST 2018]; root of context hierarchy
+20:43:19.972 INFO  [main] [o.s.b.f.a.AutowiredAnnotationBeanPostProcessor](AutowiredAnnotationBeanPostProcessor.java:153) JSR-330 'javax.inject.Inject' annotation found and supported for autowiring
+20:43:20.380 INFO  [main] [o.t.c.d.DynamicPropertiesStore](DynamicPropertiesStore.java:244) update latest block header timestamp = 0
+20:43:20.383 INFO  [main] [o.t.c.d.DynamicPropertiesStore](DynamicPropertiesStore.java:252) update latest block header number = 0
+20:43:20.393 INFO  [main] [o.t.c.d.DynamicPropertiesStore](DynamicPropertiesStore.java:260) update latest block header id = 00
+20:43:20.394 INFO  [main] [o.t.c.d.DynamicPropertiesStore](DynamicPropertiesStore.java:265) update state flag = 0
+20:43:20.559 INFO  [main] [o.t.c.c.TransactionCapsule](TransactionCapsule.java:83) Transaction create succeeded！
+20:43:20.567 INFO  [main] [o.t.c.c.TransactionCapsule](TransactionCapsule.java:83) Transaction create succeeded！
+20:43:20.568 INFO  [main] [o.t.c.c.TransactionCapsule](TransactionCapsule.java:83) Transaction create succeeded！
+20:43:20.568 INFO  [main] [o.t.c.c.TransactionCapsule](TransactionCapsule.java:83) Transaction create succeeded！
+20:43:20.569 INFO  [main] [o.t.c.c.TransactionCapsule](TransactionCapsule.java:83) Transaction create succeeded！
+20:43:20.596 INFO  [main] [o.t.c.d.Manager](Manager.java:300) create genesis block
+20:43:20.607 INFO  [main] [o.t.c.d.Manager](Manager.java:306) save block: BlockCapsule
+
+```
+
+Then observe whether block synchronization success，If synchronization successfully explains the success of the super node
+
+</details>
+
+
+### Running a Super Representative Node for private testnet
+* use master branch
 * You should modify the config.conf
-  1. genesis.block.witnesses replace to yourself address
-  2. seed.node.ip.list replace to yourself ip list
-  3. the first Super Node start, needSyncCheck should be set false
+  1. Replace existing entry in genesis.block.witnesses with your address.
+  2. Replace existing entry in seed.node ip.list with your ip list.
+  3. The first Super Node start, needSyncCheck should be set false
+  4. Set p2pversion to 61 
 
-* Use the executable JAR(Recommend the way)
+* Use the executable JAR(Recommended way)
 
 ```bash
 cd build/libs
-java -jar java-tron.jar -p yourself private key --witness -c yourself config.conf(Example：/data/java-tron/config.conf)
+java -jar FullNode.jar -p your private key --witness -c your config.conf (Example：/data/java-tron/config.conf)
 Example:
-java -jar java-tron.jar -p 650950B193DDDDB35B6E48912DD28F7AB0E7140C1BFDEFD493348F02295BD812 --witness -c /data/java-tron/config.conf
+java -jar FullNode.jar -p 650950B193DDDDB35B6E48912DD28F7AB0E7140C1BFDEFD493348F02295BD812 --witness -c /data/java-tron/config.conf
 
-```
-
-* In the Terminal
-  in the config.conf localwitness add yourself private key
-```bash
-./gradlew run -Pwitness=true
 ```
   
 <details>
 <summary>Show Output</summary>
 
 ```bash
-> ./gradlew run -Pwitness=true
+> ./gradlew run -Pwitness
 
 > Task :generateProto UP-TO-DATE
 Using TaskInputs.file() with something that doesn't resolve to a File object has been deprecated and is scheduled to be removed in Gradle 5.0. Use TaskInputs.files() instead.
@@ -266,61 +334,24 @@ In the `Program arguments` option, fill in `--witness`:
   
 Then, run `FullNode::main()` again.
 
-### Running multi-nodes
-
-To run TRON on more than one node, you need to specify several seed nodes' IPs in `config.conf` in `seed.node.ip.list`:
-For private testnet, the IPs are allocated by yourself.
-
-## Running a local node and connecting to the public testnet 
-
-* Ensure that the version number is consistent with the version number of the test network. If it is not consistent, Please modify the node.p2p.version in the config.conf file, and delete the out-directory directory (if it exists)
-
-### Running a Full Node
-
-* In the Terminal
-
-```bash
-./gradlew run
-```
-
-* Use the executable JAR
-
-```bash
-cd build/libs
-java -jar java-tron.jar
-```
-
-It is almost the same as that does in the private testnet, except that the IPs in the `config.conf` are officially declared by TRON.
-
-### Running a Super Node
-
-* Use the executable JAR(Recommend the way)
-
-```bash
-cd build/libs
-java -jar java-tron.jar -p yourself private key --witness -c yourself config.conf(Example：/data/java-tron/config.conf)
-Example:
-java -jar java-tron.jar -p 650950B193DDDDB35B6E48912DD28F7AB0E7140C1BFDEFD493348F02295BD812 --witness -c /data/java-tron/config.conf
-
-```
-
-It is almost the same as that does in the private testnet, except that the IPs in the `config.conf` are officially declared by TRON.
-  
 # Quick Start
 
-Read the [Quick Start](http://wiki.tron.network/en/latest/quick_start.html).
+Read the [Quick Start](https://developers.tron.network/docs/getting-started-1).
 
-# Community
+# Advanced Configurations
 
-* [Slack](https://join.slack.com/t/tronfoundation/shared_invite/enQtMzAzNzg4NTI4NDM3LTAyZGQzMzEzMjNkNDU0ZjNkNTA4OTYyNTA5YWZmYjE3MTEyOWZhNzljNzQwODM3NDQ0OWRiMTIyMDhlYzgyOGQ)
-* [Telegram](https://t.me/tronnetworkEN)
+Read the [Advanced Configurations](src/main/java/org/tron/core/config/README.md).
+
+# Developer Community
+
+* [Discord](https://discord.gg/GsRgsTD) Please join our Developer Discord
+* [Gitter](https://gitter.im/tronprotocol/allcoredev) the core dev gitter
 
 # Links
 
 * [Website](https://tron.network/)
-* [Documentation](https://github.com/tronprotocol/java-tron)
+* [Documentation](http://developers.tron.network)
 * [Blog](https://tronprotocol.github.io/tron-blog/)
-* [TRON Wiki](http://wiki.tron.network/en/latest/)
 
 # Projects
 

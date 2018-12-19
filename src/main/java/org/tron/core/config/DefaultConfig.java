@@ -1,5 +1,6 @@
 package org.tron.core.config;
 
+import org.apache.commons.lang3.BooleanUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -8,7 +9,12 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.tron.core.config.args.Args;
+import org.tron.core.db.RevokingDatabase;
+import org.tron.core.db.RevokingStore;
 import org.tron.core.db.api.IndexHelper;
+import org.tron.core.db2.core.SnapshotManager;
+import org.tron.core.services.interfaceOnSolidity.RpcApiServiceOnSolidity;
+import org.tron.core.services.interfaceOnSolidity.http.solidity.HttpApiOnSolidityService;
 
 @Configuration
 @Import(CommonConfig.class)
@@ -26,52 +32,47 @@ public class DefaultConfig {
     Thread.setDefaultUncaughtExceptionHandler((t, e) -> logger.error("Uncaught exception", e));
   }
 
-  @Bean(name = "witness")
-  public String witness() {
-    return "witness";
-  }
-
-  @Bean(name = "account")
-  public String account() {
-    return "account";
-  }
-
-  @Bean(name = "asset-issue")
-  public String assetIssue() {
-    return "asset-issue";
-  }
-
-  @Bean(name = "block")
-  public String block() {
-    return "block";
-  }
-
-  @Bean(name = "trans")
-  public String trans() {
-    return "trans";
-  }
-
-  @Bean(name = "utxo")
-  public String utxo() {
-    return "utxo";
-  }
-
-  @Bean(name = "properties")
-  public String properties() {
-    return "properties";
-  }
-
-  @Bean(name = "block_KDB")
-  public String blockKdb() {
-    return "block_KDB";
+  @Bean
+  public IndexHelper indexHelper() {
+    if (Args.getInstance().isSolidityNode()
+        && BooleanUtils.toBoolean(Args.getInstance().getStorage().getIndexSwitch())) {
+      return new IndexHelper();
+    }
+    return null;
   }
 
   @Bean
-  public IndexHelper indexHelper() {
-    if (!Args.getInstance().isSolidityNode()) {
-      return null;
+  public RevokingDatabase revokingDatabase() {
+    int dbVersion = Args.getInstance().getStorage().getDbVersion();
+    if (dbVersion == 1) {
+      return RevokingStore.getInstance();
+    } else if (dbVersion == 2) {
+      return new SnapshotManager();
+    } else {
+      throw new RuntimeException("db version is error.");
     }
-    return new IndexHelper();
+  }
+
+  @Bean
+  public RpcApiServiceOnSolidity getRpcApiServiceOnSolidity() {
+    boolean isSolidityNode = Args.getInstance().isSolidityNode();
+    int dbVersion = Args.getInstance().getStorage().getDbVersion();
+    if (!isSolidityNode && dbVersion == 2) {
+      return new RpcApiServiceOnSolidity();
+    }
+
+    return null;
+  }
+
+  @Bean
+  public HttpApiOnSolidityService getHttpApiOnSolidityService() {
+    boolean isSolidityNode = Args.getInstance().isSolidityNode();
+    int dbVersion = Args.getInstance().getStorage().getDbVersion();
+    if (!isSolidityNode && dbVersion == 2) {
+      return new HttpApiOnSolidityService();
+    }
+
+    return null;
   }
 
 }
